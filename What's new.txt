@@ -1,1 +1,15 @@
-All bug fix. 
+What's New in Audio Bypass Pro Update
+We are excited to bring you the latest update for Audio Bypass Pro, packed with new features to make your audio routing experience even smoother and more customizable. Here is what is new:
+ * Auto Toggle Bluetooth
+   You can now set the extension to automatically turn your Bluetooth on when you activate the bypass, and turn it off when you deactivate it. This feature saves time and makes the connection process completely seamless.
+ * Auto Open Bluetooth Settings
+   If enabled alongside the Auto Toggle feature, this new option will automatically open your phone's Bluetooth settings screen right after activation. This makes it incredibly easy to quickly pair or connect your external audio devices without navigating through phone menus.
+ * Smart Settings Dependency
+   To prevent confusion, the "Auto Open Bluetooth Settings" option is now smartly linked to the "Auto Toggle Bluetooth" option. It remains locked and inactive unless the main Bluetooth toggle feature is turned on, ensuring a logical and error-free setup.
+ * Redesigned About and Credits Section
+   The About and Credits screen has been completely redesigned for better accessibility. Every name, role, and feature is now properly structured and easily readable, allowing screen readers to smoothly swipe and read through each detail one by one.
+ * Faster Response Time
+   We have optimized the double-tap gesture timing. The delay has been perfectly balanced to ensure the settings menu opens reliably when double-tapped, while keeping the standard bypass activation fast and responsive.
+ * Silent Auto-Disconnect
+   When your Bluetooth device disconnects while the bypass is active, the extension will now quietly and automatically turn itself off with a clean, simple notification, without any unnecessary warnings.
+We hope these updates make Audio Bypass Pro even more helpful for your daily use. Thank you for your continued support and feedback.
