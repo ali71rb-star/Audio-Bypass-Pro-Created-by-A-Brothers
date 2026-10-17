@@ -43,6 +43,7 @@ end
 local configPath = pluginDir .. "/bypass_config.txt"
 local selectedChannel = "Call Volume"
 local autoBtEnabled = false
+local openBtSettingsEnabled = false
 if _G.bypass_media_is_on == nil then _G.bypass_media_is_on = false end
 
 local function loadConfig()
@@ -52,12 +53,17 @@ local function loadConfig()
             local saved = f:read("*l")
             if saved and saved ~= "" then
                 if string.find(saved, ",") then
-                    local p1, p2 = saved:match("([^,]+),([^,]+)")
-                    if p1 then selectedChannel = p1 end
-                    if p2 == "true" then autoBtEnabled = true else autoBtEnabled = false end
+                    local parts = {}
+                    for part in string.gmatch(saved, "([^,]+)") do
+                        table.insert(parts, part)
+                    end
+                    selectedChannel = parts[1] or "Call Volume"
+                    autoBtEnabled = (parts[2] == "true")
+                    openBtSettingsEnabled = (parts[3] == "true")
                 else
                     selectedChannel = saved
                     autoBtEnabled = false
+                    openBtSettingsEnabled = false
                 end
             end
             f:close()
@@ -65,11 +71,11 @@ local function loadConfig()
     end)
 end
 
-local function saveConfig(channel, autoBt)
+local function saveConfig(channel, autoBt, openBt)
     pcall(function()
         local f = io.open(configPath, "w")
         if f then 
-            f:write(channel .. "," .. tostring(autoBt))
+            f:write(channel .. "," .. tostring(autoBt) .. "," .. tostring(openBt))
             f:close() 
         end
     end)
@@ -156,18 +162,26 @@ local function processBypassToggle()
             pcall(function() btAdapter.disable() end)
         end
     else
+        if not autoBtEnabled and not isBtConnected then
+            showToast("Bluetooth is not connected. Please connect a device first.")
+            return
+        end
+
         if autoBtEnabled then
             if btAdapter and not btAdapter.isEnabled() then
                 pcall(function() btAdapter.enable() end)
             end
-            turnOnBypass()
-        else
-            if not isBtConnected then
-                showToast("Bluetooth is not connected. Please connect a device first.")
-                return
+            if openBtSettingsEnabled then
+                pcall(function()
+                    local Settings = luajava.bindClass("android.provider.Settings")
+                    local intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    service.startActivity(intent)
+                end)
             end
-            turnOnBypass()
         end
+        
+        turnOnBypass()
     end
 end
 
@@ -224,10 +238,33 @@ local function showChannelSettings()
             local cbAutoBt = CheckBox(service)
             cbAutoBt.setText("Auto Toggle Bluetooth")
             cbAutoBt.setChecked(autoBtEnabled)
-            local lpCb = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lpCb.setMargins(0, 30, 0, 0)
-            cbAutoBt.setLayoutParams(lpCb)
+            local lpCb1 = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lpCb1.setMargins(0, 30, 0, 0)
+            cbAutoBt.setLayoutParams(lpCb1)
             layout.addView(cbAutoBt)
+            
+            local cbOpenBt = CheckBox(service)
+            cbOpenBt.setText("Auto Open Bluetooth Settings")
+            cbOpenBt.setChecked(openBtSettingsEnabled)
+            if not autoBtEnabled then
+                cbOpenBt.setEnabled(false)
+                cbOpenBt.setChecked(false)
+            end
+            local lpCb2 = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lpCb2.setMargins(0, 15, 0, 0)
+            cbOpenBt.setLayoutParams(lpCb2)
+            layout.addView(cbOpenBt)
+            
+            cbAutoBt.setOnClickListener(View.OnClickListener({
+                onClick = function(v)
+                    if cbAutoBt.isChecked() then
+                        cbOpenBt.setEnabled(true)
+                    else
+                        cbOpenBt.setChecked(false)
+                        cbOpenBt.setEnabled(false)
+                    end
+                end
+            }))
             
             local btnSave = Button(service)
             btnSave.setText("Save")
@@ -247,9 +284,11 @@ local function showChannelSettings()
                     if rbNotif.isChecked() then newChannel = "Notification"
                     elseif rbAlarm.isChecked() then newChannel = "Alarm" end
                     local isAutoBt = cbAutoBt.isChecked()
-                    saveConfig(newChannel, isAutoBt)
+                    local isOpenBt = cbOpenBt.isChecked()
+                    saveConfig(newChannel, isAutoBt, isOpenBt)
                     selectedChannel = newChannel
                     autoBtEnabled = isAutoBt
+                    openBtSettingsEnabled = isOpenBt
                     showToast("Setting Saved")
                     dialog.dismiss()
                 end
