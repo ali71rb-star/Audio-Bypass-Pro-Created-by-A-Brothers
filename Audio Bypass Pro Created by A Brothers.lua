@@ -122,14 +122,16 @@ local function turnOnBypass(silent, force)
     pcall(function()
         local am = service.getSystemService(Context.AUDIO_SERVICE)
         if am then
+            am.setBluetoothScoOn(false)
+            am.setBluetoothA2dpOn(true)
+            
             if selectedChannel == "Call Volume" then
                 am.setMode(3)
+                am.setSpeakerphoneOn(true)
             else
                 am.setMode(0)
+                am.setSpeakerphoneOn(true)
             end
-            
-            am.setBluetoothScoOn(false)
-            am.setSpeakerphoneOn(true)
             
             if SDK_INT >= 31 then
                 local devices = am.getDevices(2)
@@ -183,12 +185,7 @@ local function processBypassToggle()
             end
         end
         
-        if not isBtConnected then
-            _G.bypass_media_is_on = true
-            showToast("Audio Bypass Pro ON")
-        else
-            turnOnBypass(false, false)
-        end
+        turnOnBypass(false, false)
     end
 end
 
@@ -205,22 +202,10 @@ if not _G.bt_disconnect_receiver_registered then
                     if _G.bypass_media_is_on then
                         turnOffBypass(true)
                     end
-                elseif action == BluetoothDevice.ACTION_ACL_CONNECTED then
-                    if _G.bypass_media_is_on then
-                        Handler(Looper.getMainLooper()).postDelayed(Runnable({
-                            run = function()
-                                if _G.bypass_media_is_on then
-                                    turnOnBypass(true, true)
-                                end
-                            end
-                        }), 1000)
-                    end
                 end
             end
         })
-        local filter = IntentFilter()
-        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
-        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+        local filter = IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED)
         service.registerReceiver(receiver, filter)
         _G.bt_disconnect_receiver_registered = true
     end)
