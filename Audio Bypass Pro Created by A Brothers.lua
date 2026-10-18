@@ -117,14 +117,13 @@ local function turnOffBypass(silent)
     end
 end
 
-local function turnOnBypass(silent, force)
-    if _G.bypass_media_is_on and not force then return end
+local function turnOnBypass(silent)
+    if _G.bypass_media_is_on then return end
     pcall(function()
         local am = service.getSystemService(Context.AUDIO_SERVICE)
         if am then
             am.setBluetoothScoOn(false)
             am.setBluetoothA2dpOn(true)
-            
             if selectedChannel == "Call Volume" then
                 am.setMode(3)
                 am.setSpeakerphoneOn(true)
@@ -132,7 +131,6 @@ local function turnOnBypass(silent, force)
                 am.setMode(0)
                 am.setSpeakerphoneOn(true)
             end
-            
             if SDK_INT >= 31 then
                 local devices = am.getDevices(2)
                 local targetDevice = nil
@@ -185,7 +183,7 @@ local function processBypassToggle()
             end
         end
         
-        turnOnBypass(false, false)
+        turnOnBypass(false)
     end
 end
 
