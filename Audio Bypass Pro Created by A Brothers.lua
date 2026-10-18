@@ -123,7 +123,6 @@ local function turnOnBypass(silent, force)
         local am = service.getSystemService(Context.AUDIO_SERVICE)
         if am then
             am.setBluetoothScoOn(false)
-            am.setBluetoothA2dpOn(true)
             if selectedChannel == "Call Volume" then
                 am.setMode(3)
                 am.setSpeakerphoneOn(true)
@@ -183,7 +182,12 @@ local function processBypassToggle()
             end
         end
         
-        turnOnBypass(false, false)
+        if not isBtConnected then
+            _G.bypass_media_is_on = true
+            showToast("Audio Bypass Pro ON")
+        else
+            turnOnBypass(false, false)
+        end
     end
 end
 
@@ -202,14 +206,13 @@ if not _G.bt_disconnect_receiver_registered then
                     end
                 elseif action == BluetoothDevice.ACTION_ACL_CONNECTED then
                     if _G.bypass_media_is_on then
-                        turnOnBypass(true, true)
                         Handler(Looper.getMainLooper()).postDelayed(Runnable({
                             run = function()
                                 if _G.bypass_media_is_on then
                                     turnOnBypass(true, true)
                                 end
                             end
-                        }), 400)
+                        }), 700)
                     end
                 end
             end
