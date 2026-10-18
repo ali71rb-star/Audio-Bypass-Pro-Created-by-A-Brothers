@@ -130,7 +130,6 @@ local function turnOnBypass(silent, force)
             
             am.setBluetoothScoOn(false)
             am.setSpeakerphoneOn(true)
-            am.setBluetoothA2dpOn(true)
             
             if SDK_INT >= 31 then
                 local devices = am.getDevices(2)
@@ -206,22 +205,25 @@ if not _G.bt_disconnect_receiver_registered then
                     if _G.bypass_media_is_on then
                         turnOffBypass(true)
                     end
-                elseif action == BluetoothDevice.ACTION_ACL_CONNECTED then
-                    if _G.bypass_media_is_on then
-                        Handler(Looper.getMainLooper()).postDelayed(Runnable({
-                            run = function()
-                                if _G.bypass_media_is_on then
-                                    turnOnBypass(true, true)
+                elseif action == "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" then
+                    local state = intent.getIntExtra("android.bluetooth.profile.extra.STATE", -1)
+                    if state == 2 then 
+                        if _G.bypass_media_is_on then
+                            Handler(Looper.getMainLooper()).postDelayed(Runnable({
+                                run = function()
+                                    if _G.bypass_media_is_on then
+                                        turnOnBypass(true, true)
+                                    end
                                 end
-                            end
-                        }), 700)
+                            }), 200)
+                        end
                     end
                 end
             end
         })
         local filter = IntentFilter()
         filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
-        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+        filter.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED")
         service.registerReceiver(receiver, filter)
         _G.bt_disconnect_receiver_registered = true
     end)
