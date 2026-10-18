@@ -401,7 +401,8 @@ local function showTutorialDownloadDialog(name, url)
     return string.format("%d:%02d", minutes, seconds)
   end
 
-  local folder = File(Environment.getExternalStorageDirectory(), "解说/Plugins/Audio Bypass Pro Created by A Brothers")
+  local downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+  local folder = File(downloadsDir, "Audio Bypass Pro")
   local safeName = name:gsub("[^%w%s%-]", ""):gsub("%s+", "_")
   local outFile = File(folder, safeName .. ".mp3")
   local fileAlreadyExists = false
@@ -521,7 +522,7 @@ local function showTutorialDownloadDialog(name, url)
       local request = DownloadManager.Request(Uri.parse(url))
       request.setTitle(name)
       request.setDescription("Audio Bypass Pro Tutorial")
-      request.setDestinationUri(Uri.fromFile(outFile))
+      request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "Audio Bypass Pro/" .. safeName .. ".mp3")
       request.setAllowedOverMetered(true)
       request.setAllowedOverRoaming(true)
       request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
