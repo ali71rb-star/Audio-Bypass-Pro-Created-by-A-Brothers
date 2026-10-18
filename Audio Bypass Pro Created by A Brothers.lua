@@ -202,13 +202,14 @@ if not _G.bt_disconnect_receiver_registered then
                     end
                 elseif action == BluetoothDevice.ACTION_ACL_CONNECTED then
                     if _G.bypass_media_is_on then
+                        turnOnBypass(true, true)
                         Handler(Looper.getMainLooper()).postDelayed(Runnable({
                             run = function()
                                 if _G.bypass_media_is_on then
                                     turnOnBypass(true, true)
                                 end
                             end
-                        }), 1500)
+                        }), 400)
                     end
                 end
             end
