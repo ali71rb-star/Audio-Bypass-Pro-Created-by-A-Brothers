@@ -205,25 +205,22 @@ if not _G.bt_disconnect_receiver_registered then
                     if _G.bypass_media_is_on then
                         turnOffBypass(true)
                     end
-                elseif action == "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" then
-                    local state = intent.getIntExtra("android.bluetooth.profile.extra.STATE", -1)
-                    if state == 2 then 
-                        if _G.bypass_media_is_on then
-                            Handler(Looper.getMainLooper()).postDelayed(Runnable({
-                                run = function()
-                                    if _G.bypass_media_is_on then
-                                        turnOnBypass(true, true)
-                                    end
+                elseif action == BluetoothDevice.ACTION_ACL_CONNECTED then
+                    if _G.bypass_media_is_on then
+                        Handler(Looper.getMainLooper()).postDelayed(Runnable({
+                            run = function()
+                                if _G.bypass_media_is_on then
+                                    turnOnBypass(true, true)
                                 end
-                            }), 200)
-                        end
+                            end
+                        }), 1000)
                     end
                 end
             end
         })
         local filter = IntentFilter()
         filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
-        filter.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED")
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
         service.registerReceiver(receiver, filter)
         _G.bt_disconnect_receiver_registered = true
     end)
