@@ -17,11 +17,16 @@ import "android.widget.CheckBox"
 import "android.widget.Button"
 import "android.widget.TextView"
 import "android.widget.ScrollView"
+import "android.widget.SeekBar"
 import "android.view.Gravity"
 import "android.view.WindowManager"
 import "android.view.View"
 import "android.graphics.Typeface"
 import "java.io.File"
+import "android.app.DownloadManager"
+import "android.os.Environment"
+import "android.media.MediaPlayer"
+import "java.lang.Long"
 
 local function showToast(msg)
     Handler(Looper.getMainLooper()).post(Runnable({
@@ -45,6 +50,30 @@ local selectedChannel = "Call Volume"
 local autoBtEnabled = false
 local openBtSettingsEnabled = false
 if _G.bypass_media_is_on == nil then _G.bypass_media_is_on = false end
+
+local tutorialListDialog = nil
+local tutorialDialog = nil
+local tutorialMediaPlayer = nil
+local tutorialFilePath = nil
+local tutorialPlayerActive = false
+
+local function dismissAllDialogsCustom()
+    if tutorialListDialog then pcall(function() tutorialListDialog.dismiss() end) tutorialListDialog = nil end
+    if tutorialDialog then pcall(function() tutorialDialog.dismiss() end) tutorialDialog = nil end
+    if tutorialMediaPlayer then
+        pcall(function() tutorialMediaPlayer.stop() end)
+        pcall(function() tutorialMediaPlayer.release() end)
+        tutorialMediaPlayer = nil
+        tutorialPlayerActive = false
+    end
+end
+
+local function safeShow(d)
+    if d then
+        d.getWindow().setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
+        d.show()
+    end
+end
 
 local function loadConfig()
     pcall(function()
@@ -117,13 +146,14 @@ local function turnOffBypass(silent)
     end
 end
 
-local function turnOnBypass(silent)
-    if _G.bypass_media_is_on then return end
+local function turnOnBypass(silent, force)
+    if _G.bypass_media_is_on and not force then return end
     pcall(function()
         local am = service.getSystemService(Context.AUDIO_SERVICE)
         if am then
             am.setBluetoothScoOn(false)
             am.setBluetoothA2dpOn(true)
+            
             if selectedChannel == "Call Volume" then
                 am.setMode(3)
                 am.setSpeakerphoneOn(true)
@@ -131,6 +161,7 @@ local function turnOnBypass(silent)
                 am.setMode(0)
                 am.setSpeakerphoneOn(true)
             end
+            
             if SDK_INT >= 31 then
                 local devices = am.getDevices(2)
                 local targetDevice = nil
@@ -183,7 +214,7 @@ local function processBypassToggle()
             end
         end
         
-        turnOnBypass(false)
+        turnOnBypass(false, false)
     end
 end
 
@@ -352,6 +383,356 @@ local function showAbout()
     }))
 end
 
+local function showTutorialDownloadDialog(name, url)
+  dismissAllDialogsCustom()
+  local sv = ScrollView(service)
+  local layout = LinearLayout(service)
+  layout.setOrientation(LinearLayout.VERTICAL)
+  layout.setPadding(60, 40, 60, 40)
+  sv.addView(layout)
+
+  local downloadCancelled = false
+  local userIsSeeking = false
+
+  local function formatTime(ms)
+    local totalSeconds = math.floor(ms / 1000)
+    local minutes = math.floor(totalSeconds / 60)
+    local seconds = totalSeconds % 60
+    return string.format("%d:%02d", minutes, seconds)
+  end
+
+  local folder = File(Environment.getExternalStorageDirectory(), "解说/Plugins/Audio Bypass Pro Created by A Brothers")
+  local safeName = name:gsub("[^%w%s%-]", ""):gsub("%s+", "_")
+  local outFile = File(folder, safeName .. ".mp3")
+  local fileAlreadyExists = false
+  pcall(function() fileAlreadyExists = outFile.exists() end)
+  if fileAlreadyExists then tutorialFilePath = outFile.getAbsolutePath() end
+
+  local titleTxt = TextView(service)
+  titleTxt.setText(name)
+  titleTxt.setTextSize(16)
+  titleTxt.setGravity(Gravity.CENTER)
+  titleTxt.setPadding(0, 10, 0, 30)
+  layout.addView(titleTxt)
+
+  local downloadInfoRow = LinearLayout(service)
+  downloadInfoRow.setOrientation(LinearLayout.HORIZONTAL)
+  downloadInfoRow.setVisibility(View.GONE)
+  layout.addView(downloadInfoRow)
+
+  local percentTxt = TextView(service)
+  percentTxt.setText("Downloading in progress... Please wait 0%")
+  percentTxt.setTextSize(13)
+  percentTxt.setGravity(Gravity.LEFT)
+  local percentTxtParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0)
+  percentTxt.setLayoutParams(percentTxtParams)
+  downloadInfoRow.addView(percentTxt)
+
+  local btnCancelDuring = Button(service)
+  btnCancelDuring.setText("Cancel")
+  downloadInfoRow.addView(btnCancelDuring)
+
+  local statusTxt = TextView(service)
+  statusTxt.setText(fileAlreadyExists and "Already downloaded." or "Ready to download this tutorial.")
+  statusTxt.setTextSize(14)
+  statusTxt.setGravity(Gravity.CENTER)
+  statusTxt.setPadding(0, 0, 0, 20)
+  layout.addView(statusTxt)
+
+  local btnDownload = Button(service)
+  btnDownload.setText("Download")
+  btnDownload.setVisibility(fileAlreadyExists and View.GONE or View.VISIBLE)
+  layout.addView(btnDownload)
+
+  local btnCancel = Button(service)
+  btnCancel.setText("Close")
+  btnCancel.setVisibility(fileAlreadyExists and View.GONE or View.VISIBLE)
+  layout.addView(btnCancel)
+
+  local btnPlayExisting = Button(service)
+  btnPlayExisting.setText("Play")
+  btnPlayExisting.setVisibility(fileAlreadyExists and View.VISIBLE or View.GONE)
+  layout.addView(btnPlayExisting)
+
+  local btnOk = Button(service)
+  btnOk.setText("Close")
+  btnOk.setVisibility(View.GONE)
+  layout.addView(btnOk)
+
+  local seekRow = LinearLayout(service)
+  seekRow.setOrientation(LinearLayout.HORIZONTAL)
+  seekRow.setVisibility(View.GONE)
+  layout.addView(seekRow)
+
+  local durationTxt = TextView(service)
+  durationTxt.setText("0:00 / 0:00")
+  durationTxt.setTextSize(13)
+  durationTxt.setGravity(Gravity.CENTER)
+  seekRow.addView(durationTxt)
+
+  local seekBar = SeekBar(service)
+  seekBar.setMax(100)
+  seekBar.setProgress(0)
+  seekBar.setFocusable(true)
+  seekBar.setFocusableInTouchMode(true)
+  local seekBarParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0)
+  seekBar.setLayoutParams(seekBarParams)
+  seekRow.addView(seekBar)
+
+  local btnRewind = Button(service)
+  btnRewind.setText("Rewind")
+  btnRewind.setVisibility(View.GONE)
+  layout.addView(btnRewind)
+
+  local btnPlayPause = Button(service)
+  btnPlayPause.setText("Play")
+  btnPlayPause.setVisibility(View.GONE)
+  layout.addView(btnPlayPause)
+
+  local btnFastForward = Button(service)
+  btnFastForward.setText("Fast Forward")
+  btnFastForward.setVisibility(View.GONE)
+  layout.addView(btnFastForward)
+
+  local btnGoBack = Button(service)
+  btnGoBack.setText("Close")
+  btnGoBack.setVisibility(View.GONE)
+  layout.addView(btnGoBack)
+
+  tutorialDialog = AlertDialog.Builder(service).setView(sv).setCancelable(false).create()
+  safeShow(tutorialDialog)
+
+  local function startDownload()
+    downloadCancelled = false
+    titleTxt.setText(name)
+    statusTxt.setVisibility(View.GONE)
+    percentTxt.setText("Downloading in progress... Please wait 0%")
+    btnDownload.setVisibility(View.GONE)
+    btnCancel.setVisibility(View.GONE)
+    downloadInfoRow.setVisibility(View.VISIBLE)
+
+    pcall(function() if not folder.exists() then folder.mkdirs() end end)
+    pcall(function() if outFile.exists() then outFile.delete() end end)
+    tutorialFilePath = outFile.getAbsolutePath()
+
+    local dm = service.getSystemService(Context.DOWNLOAD_SERVICE)
+    local downloadId = nil
+    local enqueueOk, enqueueErr = pcall(function()
+      local request = DownloadManager.Request(Uri.parse(url))
+      request.setTitle(name)
+      request.setDescription("Audio Bypass Pro Tutorial")
+      request.setDestinationUri(Uri.fromFile(outFile))
+      request.setAllowedOverMetered(true)
+      request.setAllowedOverRoaming(true)
+      request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+      downloadId = dm.enqueue(request)
+    end)
+
+    if not enqueueOk or not downloadId then
+      titleTxt.setText(name)
+      downloadInfoRow.setVisibility(View.GONE)
+      statusTxt.setVisibility(View.VISIBLE)
+      statusTxt.setText("Download failed: " .. tostring(enqueueErr) .. " - Try Again")
+      btnDownload.setVisibility(View.VISIBLE)
+      btnCancel.setVisibility(View.VISIBLE)
+      return
+    end
+
+    local function pollProgress()
+      if downloadCancelled then
+        pcall(function() dm.remove(downloadId) end)
+        pcall(function() outFile.delete() end)
+        titleTxt.setText(name)
+        downloadInfoRow.setVisibility(View.GONE)
+        statusTxt.setVisibility(View.VISIBLE)
+        statusTxt.setText("Download cancelled.")
+        btnDownload.setVisibility(View.VISIBLE)
+        btnCancel.setVisibility(View.VISIBLE)
+        return
+      end
+
+      local finished = false
+      pcall(function()
+        local cursor = dm.query(DownloadManager.Query())
+        while cursor.moveToNext() do
+          local rowId = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_ID))
+          if rowId == downloadId then
+            local status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS))
+            local bytesDownloaded = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+            local bytesTotal = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+
+            if status == DownloadManager.STATUS_SUCCESSFUL then
+              finished = true
+              titleTxt.setText(name)
+              downloadInfoRow.setVisibility(View.GONE)
+              statusTxt.setVisibility(View.VISIBLE)
+              statusTxt.setText("Download Successfully")
+              btnOk.setVisibility(View.VISIBLE)
+              btnPlayExisting.setVisibility(View.VISIBLE)
+            elseif status == DownloadManager.STATUS_FAILED then
+              finished = true
+              pcall(function() outFile.delete() end)
+              titleTxt.setText(name)
+              downloadInfoRow.setVisibility(View.GONE)
+              statusTxt.setVisibility(View.VISIBLE)
+              statusTxt.setText("Download failed: Try Again")
+              btnDownload.setVisibility(View.VISIBLE)
+              btnCancel.setVisibility(View.VISIBLE)
+            elseif bytesTotal and bytesTotal > 0 then
+              local percent = math.floor((bytesDownloaded / bytesTotal) * 100)
+              local roundedPercent = math.floor(percent / 10) * 10
+              percentTxt.setText("Downloading in progress... Please wait " .. roundedPercent .. "%")
+            end
+            break
+          end
+        end
+        cursor.close()
+      end)
+
+      if not finished then
+        service.handler.postDelayed(Runnable({run = pollProgress}), Long(400))
+      end
+    end
+
+    pollProgress()
+  end
+
+  btnDownload.setOnClickListener(View.OnClickListener({ onClick = function(v) startDownload() end }))
+
+  btnCancel.setOnClickListener(View.OnClickListener({ onClick = function(v) dismissAllDialogsCustom() end }))
+
+  btnCancelDuring.setOnClickListener(View.OnClickListener({ onClick = function(v) downloadCancelled = true end }))
+
+  local function updateSeekLoop()
+    if not tutorialPlayerActive or not tutorialMediaPlayer then return end
+    pcall(function()
+      local dur = tutorialMediaPlayer.getDuration()
+      local pos = tutorialMediaPlayer.getCurrentPosition()
+      if dur > 0 then
+        seekBar.setMax(dur)
+        if not userIsSeeking then
+          seekBar.setProgress(pos)
+          durationTxt.setText(formatTime(pos) .. " / " .. formatTime(dur))
+        end
+      end
+    end)
+    service.handler.postDelayed(Runnable({run = updateSeekLoop}), Long(500))
+  end
+
+  local function startPlayback()
+    btnDownload.setVisibility(View.GONE)
+    btnCancel.setVisibility(View.GONE)
+    btnPlayExisting.setVisibility(View.GONE)
+    btnOk.setVisibility(View.GONE)
+    statusTxt.setVisibility(View.VISIBLE)
+    statusTxt.setText(name)
+    seekRow.setVisibility(View.VISIBLE)
+    btnRewind.setVisibility(View.VISIBLE)
+    btnPlayPause.setVisibility(View.VISIBLE)
+    btnFastForward.setVisibility(View.VISIBLE)
+    btnGoBack.setVisibility(View.VISIBLE)
+
+    pcall(function()
+      tutorialMediaPlayer = MediaPlayer()
+      tutorialMediaPlayer.setDataSource(tutorialFilePath)
+      tutorialMediaPlayer.prepare()
+      tutorialMediaPlayer.start()
+      btnPlayPause.setText("Pause")
+      tutorialPlayerActive = true
+      updateSeekLoop()
+    end)
+  end
+
+  btnOk.setOnClickListener(View.OnClickListener({ onClick = function(v) dismissAllDialogsCustom() end }))
+
+  btnPlayExisting.setOnClickListener(View.OnClickListener({ onClick = function(v) startPlayback() end }))
+
+  btnRewind.setOnClickListener(View.OnClickListener({
+    onClick = function(v)
+      pcall(function()
+        if tutorialMediaPlayer then
+          local pos = tutorialMediaPlayer.getCurrentPosition()
+          local newPos = pos - 10000
+          if newPos < 0 then newPos = 0 end
+          tutorialMediaPlayer.seekTo(newPos)
+        end
+      end)
+    end
+  }))
+
+  btnPlayPause.setOnClickListener(View.OnClickListener({
+    onClick = function(v)
+      pcall(function()
+        if tutorialMediaPlayer then
+          if tutorialMediaPlayer.isPlaying() then
+            tutorialMediaPlayer.pause()
+            btnPlayPause.setText("Play")
+          else
+            tutorialMediaPlayer.start()
+            btnPlayPause.setText("Pause")
+          end
+        end
+      end)
+    end
+  }))
+
+  btnFastForward.setOnClickListener(View.OnClickListener({
+    onClick = function(v)
+      pcall(function()
+        if tutorialMediaPlayer then
+          local dur = tutorialMediaPlayer.getDuration()
+          local pos = tutorialMediaPlayer.getCurrentPosition()
+          local newPos = pos + 10000
+          if newPos > dur then newPos = dur end
+          tutorialMediaPlayer.seekTo(newPos)
+        end
+      end)
+    end
+  }))
+
+  seekBar.setOnSeekBarChangeListener(luajava.createProxy("android.widget.SeekBar$OnSeekBarChangeListener", {
+    onProgressChanged = function(sb, progress, fromUser)
+      if fromUser then
+        pcall(function()
+          if tutorialMediaPlayer then
+            tutorialMediaPlayer.seekTo(progress)
+            durationTxt.setText(formatTime(progress) .. " / " .. formatTime(tutorialMediaPlayer.getDuration()))
+          end
+        end)
+      end
+    end,
+    onStartTrackingTouch = function(sb) userIsSeeking = true end,
+    onStopTrackingTouch = function(sb)
+      userIsSeeking = false
+      pcall(function()
+        if tutorialMediaPlayer then
+          tutorialMediaPlayer.seekTo(sb.getProgress())
+        end
+      end)
+    end
+  }))
+
+  btnGoBack.setOnClickListener(View.OnClickListener({
+    onClick = function(v)
+      tutorialPlayerActive = false
+      pcall(function()
+        if tutorialMediaPlayer then
+          tutorialMediaPlayer.stop()
+          tutorialMediaPlayer.release()
+          tutorialMediaPlayer = nil
+        end
+      end)
+      dismissAllDialogsCustom()
+    end
+  }))
+end
+
+local function showTutorialListMenu()
+    local name = "How to use Audio Bypass Pro"
+    local url = "https://raw.githubusercontent.com/ali71rb-star/Audio-Bypass-Pro-Created-by-A-Brothers/main/How%20to%20use%20Audio%20Bypass%20Pro%20Created%20by%20A%20Brothers.mp3"
+    showTutorialDownloadDialog(name, url)
+end
+
 local function openWhatsApp()
     pcall(function()
         local phoneNumber = "923477583735" 
@@ -366,7 +747,13 @@ end
 local function showMainMenu()
     Handler(Looper.getMainLooper()).post(Runnable({
         run = function()
-            local options = {"Audio Stream Channel Settings", "About & Credits", "Help & Feedback", "Exit"}
+            local options = {
+                "Audio Stream Channel Settings", 
+                "About & Credits", 
+                "How to Use Audio Bypass Pro", 
+                "Help & Feedback", 
+                "Exit"
+            }
             local builder = AlertDialog.Builder(service)
             builder.setTitle("Audio Bypass Pro Menu")
             builder.setItems(options, DialogInterface.OnClickListener({
@@ -376,8 +763,10 @@ local function showMainMenu()
                     elseif which == 1 then
                         showAbout()
                     elseif which == 2 then
-                        openWhatsApp()
+                        showTutorialListMenu()
                     elseif which == 3 then
+                        openWhatsApp()
+                    elseif which == 4 then
                         dialog.dismiss()
                     end
                 end
