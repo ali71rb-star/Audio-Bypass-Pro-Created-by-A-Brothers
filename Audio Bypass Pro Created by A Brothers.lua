@@ -122,14 +122,16 @@ local function turnOnBypass(silent, force)
     pcall(function()
         local am = service.getSystemService(Context.AUDIO_SERVICE)
         if am then
-            am.setBluetoothScoOn(false)
             if selectedChannel == "Call Volume" then
                 am.setMode(3)
-                am.setSpeakerphoneOn(true)
             else
                 am.setMode(0)
-                am.setSpeakerphoneOn(true)
             end
+            
+            am.setBluetoothScoOn(false)
+            am.setSpeakerphoneOn(true)
+            am.setBluetoothA2dpOn(true)
+            
             if SDK_INT >= 31 then
                 local devices = am.getDevices(2)
                 local targetDevice = nil
