@@ -117,8 +117,8 @@ local function turnOffBypass(silent)
     end
 end
 
-local function turnOnBypass()
-    if _G.bypass_media_is_on then return end
+local function turnOnBypass(silent, force)
+    if _G.bypass_media_is_on and not force then return end
     pcall(function()
         local am = service.getSystemService(Context.AUDIO_SERVICE)
         if am then
@@ -147,7 +147,9 @@ local function turnOnBypass()
         end
     end)
     _G.bypass_media_is_on = true
-    showToast("Audio Bypass Pro ON")
+    if not silent then
+        showToast("Audio Bypass Pro ON")
+    end
 end
 
 local function processBypassToggle()
@@ -181,7 +183,7 @@ local function processBypassToggle()
             end
         end
         
-        turnOnBypass()
+        turnOnBypass(false, false)
     end
 end
 
@@ -198,10 +200,22 @@ if not _G.bt_disconnect_receiver_registered then
                     if _G.bypass_media_is_on then
                         turnOffBypass(true)
                     end
+                elseif action == BluetoothDevice.ACTION_ACL_CONNECTED then
+                    if _G.bypass_media_is_on then
+                        Handler(Looper.getMainLooper()).postDelayed(Runnable({
+                            run = function()
+                                if _G.bypass_media_is_on then
+                                    turnOnBypass(true, true)
+                                end
+                            end
+                        }), 1500)
+                    end
                 end
             end
         })
-        local filter = IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        local filter = IntentFilter()
+        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
         service.registerReceiver(receiver, filter)
         _G.bt_disconnect_receiver_registered = true
     end)
